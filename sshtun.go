@@ -434,13 +434,13 @@ func (tun *SSHTun) getSSHAuthMethodForSSHAgent() (ssh.AuthMethod, error) {
 	return ssh.PublicKeys(signers...), nil
 }
 
-func (tun *SSHTun) forward(localConn net.Conn, config *ssh.ClientConfig) {
-	defer localConn.Close()
+func (tun *SSHTun) forward(incomingConn net.Conn, config *ssh.ClientConfig) {
+	defer incomingConn.Close()
 
 	local := tun.local.connectionString()
 	server := tun.server.connectionString()
 	remote := tun.remote.connectionString()
-	connStr := fmt.Sprintf("%s -(tcp)> %s -(ssh)> %s -(tcp)> %s", localConn.RemoteAddr().String(), local, server, remote)
+	connStr := fmt.Sprintf("%s -(tcp)> %s -(ssh)> %s -(tcp)> %s", incomingConn.RemoteAddr().String(), local, server, remote)
 
 	sshConn, err := ssh.Dial(tun.server.connectionType(), server, config)
 	if err != nil {
@@ -471,21 +471,19 @@ func (tun *SSHTun) forward(localConn net.Conn, config *ssh.ClientConfig) {
 	myCtx, myCancel := context.WithCancel(tun.ctx)
 
 	go func() {
-		_, err = io.Copy(remoteConn, localConn)
+		_, err = io.Copy(remoteConn, incomingConn)
 		if err != nil {
-			//log.Printf("Error on io.Copy remote->local on connection %s: %s", connStr, err.Error())
-			myCancel()
-			return
+			log.Printf("Error on io.Copy remote->local on connection %s: %s", connStr, err)
 		}
+		myCancel()
 	}()
 
 	go func() {
-		_, err = io.Copy(localConn, remoteConn)
+		_, err = io.Copy(incomingConn, remoteConn)
 		if err != nil {
-			//log.Printf("Error on io.Copy local->remote on connection %s: %s", connStr, err.Error())
-			myCancel()
-			return
+			log.Printf("Error on io.Copy remote->local on connection %s: %s", connStr, err)
 		}
+		myCancel()
 	}()
 
 	select {
